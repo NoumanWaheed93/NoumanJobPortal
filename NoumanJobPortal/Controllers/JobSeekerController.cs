@@ -5,47 +5,53 @@ using NoumanJobPortal.Database; // Assuming this is the namespace for your DbCon
 using System.Threading.Tasks;
 using NoumanJobPortal.Models;
 using NoumanJobPortal.Requests;
+using Microsoft.AspNetCore.Authorization;
+using NoumanJobPortal.Contracts;
 
 namespace NoumanJobPortal.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class JobSeekerController : ControllerBase
     {
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly ApplicationDBContext _dbContext; // Add this line
+        private readonly IApplicationDBContext _dbContext;
 
-        public JobSeekerController(UserManager<ApplicationUser> userManager, ApplicationDBContext dbContext) // Add dbContext to the constructor
+        public JobSeekerController(UserManager<ApplicationUser> userManager, IApplicationDBContext dbContext) // Add dbContext to the constructor
         {
             _userManager = userManager;
             _dbContext = dbContext;
         }
 
         [HttpPost]
-        public async Task<IActionResult> Register(CreateJobSeeker newJobSeeker)
+        public async Task<IActionResult> Register(RequestCreateJobSeeker newJobSeeker)
         {
-            // 1. Create the Identity user
-            var identityUser = new ApplicationUser
+            // 1. Find the existing Identity user by email
+            var identityUser = await _userManager.FindByIdAsync(newJobSeeker.UserId);
+            if (identityUser == null)
+                return BadRequest("User not found. Please register first using the default registration endpoint.");
+
+            // 2. Assign JobSeeker role if not already assigned
+            if (!await _userManager.IsInRoleAsync(identityUser, RolesStrings.JobSeeker))
             {
-                UserName = newJobSeeker.UserName,
-                Email = newJobSeeker.Email,
-                EmailConfirmed = true
-            };
-            var result = await _userManager.CreateAsync(identityUser, newJobSeeker.Password);
-            if (!result.Succeeded)
-                return BadRequest(result.Errors);
+                var roleResult = await _userManager.AddToRoleAsync(identityUser, RolesStrings.JobSeeker);
+                if (!roleResult.Succeeded)
+                    return BadRequest(roleResult.Errors);
+            }
 
-            // 2. Assign JobSeeker role
-            await _userManager.AddToRoleAsync(identityUser, "JobSeeker");
+            var exists = _dbContext.JobSeekers.Any(js => js.User.Id == identityUser.Id);
+            if (exists)
+                return BadRequest("JobSeeker profile already exists for this user.");
 
-            // 2a. Fetch and assign skills if provided
+            // 3. Fetch and assign skills if provided
             Skill[] skillEntities = Array.Empty<Skill>();
             if (newJobSeeker.Skills != null && newJobSeeker.Skills.Length > 0)
             {
                 skillEntities = _dbContext.Skills.Where(s => newJobSeeker.Skills.Contains(s.Id)).ToArray();
             }
 
-            // 3. Create the JobSeeker entity and link to Identity user
+            // 4. Create the JobSeeker entity and link to Identity user
             var jobSeeker = new JobSeeker
             {
                 FirstName = newJobSeeker.FirstName,
@@ -54,11 +60,10 @@ namespace NoumanJobPortal.Controllers
                 skills = skillEntities
             };
 
-            // Save JobSeeker to the database (use your DbContext)
             _dbContext.JobSeekers.Add(jobSeeker);
             await _dbContext.SaveChangesAsync();
 
-            return Ok("JobSeeker account created successfully.");
+            return Ok("JobSeeker profile created and role assigned successfully.");
         }
     }
 }

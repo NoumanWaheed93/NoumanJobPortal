@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using NoumanJobPortal;
 using NoumanJobPortal.Database;
 using NoumanJobPortal.Extensions;
 using NoumanJobPortal.Models.Users;
@@ -55,7 +56,7 @@ async Task SeedRolesAndUsersAsync(IServiceProvider services)
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
 
-    string[] roles = { "AdminUser", "Employer", "JobSeeker" };
+    string[] roles = { RolesStrings.Admin, RolesStrings.Employer, RolesStrings.JobSeeker };
     foreach (var role in roles)
     {
         if (!await roleManager.RoleExistsAsync(role))
